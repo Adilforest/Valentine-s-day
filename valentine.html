@@ -17,7 +17,7 @@
     }
 
     *{box-sizing:border-box}
-    html,body{height:100%}
+    html,body{height:100%;overflow:hidden}
     body{
       margin:0;
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
@@ -26,7 +26,6 @@
         radial-gradient(900px 600px at 20% 20%, var(--bg2), transparent 60%),
         radial-gradient(900px 600px at 80% 30%, #fff, transparent 55%),
         linear-gradient(180deg, var(--bg1), #fff);
-      overflow:hidden;
     }
 
     .wrap{
@@ -351,9 +350,40 @@
     let yesScale = 1;
     let noScale  = 1;
 
+    // Base sizes for the NO button (must match the CSS values)
+    const NO_BASE_FONT = 18;
+    const NO_BASE_PAD_V = 14;
+    const NO_BASE_PAD_H = 22;
+    const NO_BASE_MIN_W = 130;
+
     function setButtonScales(){
       yesBtn.style.transform = `scale(${yesScale})`;
-      noBtn.style.transform  = `scale(${noScale})`;
+      // NO button: change real size instead of transform:scale()
+      // so that offsetWidth/Height always match visual size — no
+      // off-screen bugs on small mobile screens.
+      noBtn.style.fontSize  = `${NO_BASE_FONT  * noScale}px`;
+      noBtn.style.padding   = `${NO_BASE_PAD_V * noScale}px ${NO_BASE_PAD_H * noScale}px`;
+      noBtn.style.minWidth  = `${NO_BASE_MIN_W * noScale}px`;
+    }
+
+    // Reliable viewport size — take the SMALLEST of all available
+    // measurements so we never overshoot the visible area on mobile.
+    function vp(){
+      const vv = window.visualViewport;
+      const candidates_w = [
+        vv ? vv.width  : Infinity,
+        document.documentElement.clientWidth  || Infinity,
+        window.innerWidth  || Infinity
+      ];
+      const candidates_h = [
+        vv ? vv.height : Infinity,
+        document.documentElement.clientHeight || Infinity,
+        window.innerHeight || Infinity
+      ];
+      return {
+        w: Math.min(...candidates_w) || 360,
+        h: Math.min(...candidates_h) || 640
+      };
     }
 
     function pop(el){
@@ -364,12 +394,24 @@
     }
 
     function moveNoRandom(){
-      const rect = noBtn.getBoundingClientRect();
-      const w = rect.width || noBtn.offsetWidth || 130;
-      const h = rect.height || noBtn.offsetHeight || 52;
-      const viewW = document.documentElement.clientWidth || window.innerWidth;
-      const viewH = document.documentElement.clientHeight || window.innerHeight;
-      const pad = 10;
+      // Make sure noBtn is visible & fixed FIRST so offsetWidth is accurate.
+      noBtn.style.position = 'fixed';
+      noBtn.style.display  = 'inline-block';
+      noBtn.style.visibility = 'visible';
+      noBtn.style.pointerEvents = 'auto';
+      noBtn.style.opacity = '1';
+      noBtn.style.right  = 'auto';
+      noBtn.style.bottom = 'auto';
+      // Temporarily kill transition so position jumps instantly.
+      noBtn.style.transition = 'none';
+
+      // Force sync reflow so offsetWidth reflects the new font-size/padding.
+      void noBtn.offsetWidth;
+
+      const { w: viewW, h: viewH } = vp();
+      const w = noBtn.offsetWidth  || Math.round(NO_BASE_MIN_W * noScale);
+      const h = noBtn.offsetHeight || 48;
+      const pad = 14;
       const minX = pad;
       const minY = pad;
       const maxX = Math.max(pad, viewW - w - pad);
@@ -380,7 +422,7 @@
       let y = minY;
       let found = false;
 
-      for(let i = 0; i < 28; i++){
+      for(let i = 0; i < 50; i++){
         const cx = minX + Math.random() * Math.max(1, maxX - minX);
         const cy = minY + Math.random() * Math.max(1, maxY - minY);
         const overlapsYes =
@@ -413,49 +455,51 @@
         y = best.y;
       }
 
-      // Final hard clamp in case of mobile viewport quirks.
+      // Hard clamp
       x = Math.max(minX, Math.min(x, maxX));
       y = Math.max(minY, Math.min(y, maxY));
 
-      noBtn.style.position = 'fixed';
       noBtn.style.left = `${x}px`;
-      noBtn.style.top = `${y}px`;
-      noBtn.style.right = 'auto';
-      noBtn.style.bottom = 'auto';
-      noBtn.style.display = 'inline-block';
-      noBtn.style.visibility = 'visible';
-      noBtn.style.pointerEvents = 'auto';
-      noBtn.style.opacity = '1';
-      noBtn.style.transition = 'left .22s ease, top .22s ease, opacity .18s ease, transform .18s ease';
+      noBtn.style.top  = `${y}px`;
 
-      // Extra safety clamp using rendered rect to prevent any overflow on mobile.
-      keepNoInViewport();
+      // Re-enable smooth transition AFTER position is set.
+      requestAnimationFrame(() => {
+        noBtn.style.transition =
+          'left .22s ease, top .22s ease, opacity .18s ease, font-size .18s ease, padding .18s ease';
+      });
+
+      // Belt-and-suspenders: re-check after transitions settle.
+      requestAnimationFrame(keepNoInViewport);
+      setTimeout(keepNoInViewport, 120);
+      setTimeout(keepNoInViewport, 350);
     }
 
     function keepNoInViewport(){
       if (noBtn.style.display === 'none') return;
-      const pad = 10;
-      const viewW = document.documentElement.clientWidth || window.innerWidth;
-      const viewH = document.documentElement.clientHeight || window.innerHeight;
+      const pad = 14;
+      const { w: viewW, h: viewH } = vp();
       const r = noBtn.getBoundingClientRect();
-      const bw = r.width || noBtn.offsetWidth || 130;
-      const bh = r.height || noBtn.offsetHeight || 52;
-      const minX = pad;
-      const minY = pad;
-      const maxX = Math.max(minX, viewW - bw - pad);
-      const maxY = Math.max(minY, viewH - bh - pad);
-      let left = parseFloat(noBtn.style.left || `${r.left}`);
-      let top = parseFloat(noBtn.style.top || `${r.top}`);
+      if (!r.width) return; // hidden or not laid out
 
-      if (r.left < pad) left += (pad - r.left);
-      if (r.right > viewW - pad) left -= (r.right - (viewW - pad));
-      if (r.top < pad) top += (pad - r.top);
-      if (r.bottom > viewH - pad) top -= (r.bottom - (viewH - pad));
+      let left = parseFloat(noBtn.style.left);
+      let top  = parseFloat(noBtn.style.top);
+      if (isNaN(left)) left = r.left;
+      if (isNaN(top))  top  = r.top;
 
-      left = Math.max(minX, Math.min(left, maxX));
-      top = Math.max(minY, Math.min(top, maxY));
+      // If the rendered rect overflows the viewport, fix it.
+      if (r.right  > viewW - pad) left -= (r.right  - (viewW - pad));
+      if (r.bottom > viewH - pad) top  -= (r.bottom - (viewH - pad));
+      if (r.left   < pad)         left += (pad - r.left);
+      if (r.top    < pad)         top  += (pad - r.top);
+
+      // Final absolute clamp
+      const maxX = Math.max(pad, viewW - r.width  - pad);
+      const maxY = Math.max(pad, viewH - r.height - pad);
+      left = Math.max(pad, Math.min(left, maxX));
+      top  = Math.max(pad, Math.min(top,  maxY));
+
       noBtn.style.left = `${left}px`;
-      noBtn.style.top = `${top}px`;
+      noBtn.style.top  = `${top}px`;
     }
 
     function celebratePink(){
