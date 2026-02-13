@@ -286,9 +286,12 @@
     let noClicks = 0;
     let isFullscreenYes = false;
     let isOfficial = false;
+    let trackStarted = false;
 
     // Simple sound effects via Web Audio API (no external audio files)
     let audioCtx = null;
+    const loveTrack = new Audio(encodeURI('Пицца - Лифт.mp3'));
+    loveTrack.preload = 'auto';
 
     function ensureAudio(){
       if (!audioCtx){
@@ -529,6 +532,17 @@
       playYesSound();
       celebratePink();
       revealOfficialTitle();
+      noBtn.style.opacity = '0';
+      noBtn.style.pointerEvents = 'none';
+      noBtn.style.display = 'none';
+      if (!trackStarted){
+        loveTrack.currentTime = 23;
+        loveTrack.play().then(() => {
+          trackStarted = true;
+        }).catch(() => {
+          // Ignore play interruption errors (browser policies/network hiccups).
+        });
+      }
       if (!isFullscreenYes) pop(yesBtn);
     });
 
